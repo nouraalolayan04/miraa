@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>مِرآه | منصة الأسئلة والأجوبة المرئية</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+  <div class="container">
+    <!-- ===== Header ===== -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">مِ</div>
+        <div>
+          <h1 class="site-title">مِرآه</h1>
+          <p class="subtitle">اسأل الصورة… مِرآه تجيبك بالعربية</p>
+          <p class="subtitle"> منصة الأسئلة والأجوبة المرئية</p>
+        </div>
+      </div>
+
+      <div class="pill">
+        <span class="dot"></span>
+        <span id="modelName">Qwen2.5-VL</span>
+      </div>
+    </header>
+
+    <main class="grid">
+      <!-- Upload Card -->
+      <section class="card">
+        <h2 class="card-title">1) ارفع صورة</h2>
+
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="منطقة رفع الصورة">
+          <input type="file" id="image" name="image" accept="image/*" hidden>
+          <div class="dz-inner">
+            <div class="dz-icon">📷</div>
+            <div class="dz-text">
+              <div class="dz-strong">اسحب الصورة هنا</div>
+              <div class="dz-muted">أو اضغط لاختيار صورة (PNG/JPG/WEBP)</div>
+            </div>
+            <button class="btn-secondary" type="button" id="pickBtn">اختيار صورة</button>
+          </div>
+        </div>
+
+        <div class="preview-wrap">
+          <img id="preview" class="preview" alt="معاينة الصورة" />
+          <div id="previewEmpty" class="preview-empty">لا توجد معاينة بعد</div>
+        </div>
+
+        <div class="hint">
+          نصيحة: أسئلة مثل <b>العدّ</b> و<b>الألوان</b> و<b>الأشياء</b> تعطي نتائج أفضل.
+        </div>
+
+        <div id="jsOk" class="js-ok">✅ JavaScript يعمل</div>
+      </section>
+
+      <!-- Ask Card -->
+      <section class="card">
+        <h2 class="card-title">2) اكتب سؤالك</h2>
+
+        <form id="vqaForm" method="post" enctype="multipart/form-data">
+          <label class="label" for="question">السؤال</label>
+          <input
+            type="text"
+            name="question"
+            id="question"
+            placeholder="مثال: كم عدد الأطفال في الصورة؟"
+            autocomplete="off"
+            required
+          />
+
+          <div class="chips">
+            <button type="button" class="chip" data-q="كم عدد الأشخاص في الصورة؟">كم عدد الأشخاص؟</button>
+            <button type="button" class="chip" data-q="كم عدد الأطفال في الصورة؟">كم عدد الأطفال؟</button>
+            <button type="button" class="chip" data-q="ما لون القميص؟">ما لون القميص؟</button>
+            <button type="button" class="chip" data-q="ماذا يوجد على الطاولة؟">ماذا على الطاولة؟</button>
+            <button type="button" class="chip" data-q="هل توجد سيارة في الصورة؟">هل توجد سيارة؟</button>
+          </div>
+
+          <button type="submit" class="btn-primary" id="btn">
+            <span class="btn-text">اسأل مِرآه</span>
+            <span class="spinner" id="spinner" aria-hidden="true"></span>
+          </button>
+        </form>
+
+        <div class="status" id="status"></div>
+
+        <div class="result">
+          <div class="result-head">
+            <h3>🪞 إجابة مِرآه</h3>
+            <button class="btn-ghost" id="copyBtn" type="button" title="نسخ الإجابة">نسخ</button>
+          </div>
+          <div class="answer" id="answer">—</div>
+        </div>
+
+        <!-- ===== Feedback ===== -->
+        <div class="feedback">
+          <h4>قيّمي الإجابة</h4>
+          <div class="stars" id="stars">
+            <button type="button" class="star" data-v="1">★</button>
+            <button type="button" class="star" data-v="2">★</button>
+            <button type="button" class="star" data-v="3">★</button>
+            <button type="button" class="star" data-v="4">★</button>
+            <button type="button" class="star" data-v="5">★</button>
+          </div>
+
+          <input id="feedbackText" type="text" placeholder="ملاحظة اختيارية عن سبب التقييم..." />
+          <button id="sendFeedback" type="button" class="btn-secondary">إرسال التقييم</button>
+          <div id="fbStatus" class="status"></div>
+        </div>
+
+        <hr class="sep" />
+
+        <!-- ===== History ===== -->
+        <div class="history">
+          <div class="row">
+            <h3>سجل الإجابات</h3>
+            <button id="refreshHistory" type="button" class="btn-ghost">تحديث</button>
+          </div>
+          <div id="historyList"></div>
+        </div>
+
+        <footer class="footer">
+          © 2026 مِرآه — منصة A-VQA باللغة العربية
+        </footer>
+      </section>
+    </main>
+  </div>
+
+<script>
+  // ===== Elements =====
+  const form = document.getElementById("vqaForm");
+  const dropzone = document.getElementById("dropzone");
+  const imageInput = document.getElementById("image");
+  const pickBtn = document.getElementById("pickBtn");
+  const preview = document.getElementById("preview");
+  const previewEmpty = document.getElementById("previewEmpty");
+
+  const statusEl = document.getElementById("status");
+  const answerEl = document.getElementById("answer");
+  const btn = document.getElementById("btn");
+  const spinner = document.getElementById("spinner");
+  const copyBtn = document.getElementById("copyBtn");
+  const questionInput = document.getElementById("question");
+
+  const refreshHistoryBtn = document.getElementById("refreshHistory");
+  const historyList = document.getElementById("historyList");
+
+  const stars = document.querySelectorAll(".star");
+  const fbStatus = document.getElementById("fbStatus");
+  const feedbackText = document.getElementById("feedbackText");
+  const sendFeedbackBtn = document.getElementById("sendFeedback");
+
+  let lastInteractionId = null;
+  let selectedRating = 0;
+
+  // ===== Helpers =====
+  function setStatus(msg, type="") {
+    statusEl.textContent = msg || "";
+    statusEl.className = "status " + (type ? `status-${type}` : "");
+  }
+
+  function setFbStatus(msg, type="") {
+    fbStatus.textContent = msg || "";
+    fbStatus.className = "status " + (type ? `status-${type}` : "");
+  }
+
+  function setLoading(isLoading) {
+    btn.disabled = isLoading;
+    spinner.style.display = isLoading ? "inline-block" : "none";
+    btn.classList.toggle("loading", isLoading);
+  }
+
+  function showPreview(file) {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    preview.src = url;
+    preview.style.display = "block";
+    previewEmpty.style.display = "none";
+  }
+
+  function validateBeforeSend() {
+    if (!imageInput.files || !imageInput.files[0]) {
+      setStatus("ارفع صورة أولاً.", "error");
+      return false;
+    }
+    if (!questionInput.value.trim()) {
+      setStatus("اكتب السؤال أولاً.", "error");
+      return false;
+    }
+    return true;
+  }
+
+  // ===== History =====
+  async function loadHistory() {
+    historyList.innerHTML = "";
+    try {
+      const res = await fetch("/api/history?limit=10");
+      const data = await res.json();
+      if (!data.ok) {
+        historyList.textContent = "تعذر تحميل السجل.";
+        return;
+      }
+
+      if (data.items.length === 0) {
+        historyList.textContent = "لا يوجد سجل بعد.";
+        return;
+      }
+
+      data.items.forEach(it => {
+        const div = document.createElement("div");
+        div.className = "hist-item";
+        const rating = (it.rating === null || it.rating === undefined) ? "—" : it.rating;
+        div.innerHTML = `
+          <div class="hist-q"><b>س:</b> ${escapeHtml(it.question)}</div>
+          <div class="hist-a"><b>ج:</b> ${escapeHtml(it.answer)}</div>
+          <div class="hist-meta">الموديل: ${escapeHtml(it.model_id)} | التقييم: ${rating}</div>
+        `;
+        historyList.appendChild(div);
+      });
+    } catch (e) {
+      historyList.textContent = "تعذر تحميل السجل.";
+    }
+  }
+
+  function escapeHtml(s) {
+    return (s || "").replace(/[&<>"']/g, (c) => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+    }[c]));
+  }
+
+  refreshHistoryBtn.addEventListener("click", loadHistory);
+
+  // ===== Pick Image =====
+  pickBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    imageInput.click();
+  });
+
+  dropzone.addEventListener("click", () => imageInput.click());
+
+  imageInput.addEventListener("change", () => {
+    const file = imageInput.files?.[0];
+    if (file) {
+      showPreview(file);
+      setStatus("تم اختيار الصورة ✅", "ok");
+    }
+  });
+
+  // ===== Drag & Drop =====
+  ["dragenter","dragover"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add("dz-active");
+    });
+  });
+
+  ["dragleave","drop"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove("dz-active");
+    });
+  });
+
+  dropzone.addEventListener("drop", (e) => {
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      imageInput.files = dt.files;
+      showPreview(file);
+      setStatus("تم رفع الصورة بالسحب ✅", "ok");
+    }
+  });
+
+  // ===== Chips =====
+  document.querySelectorAll(".chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      questionInput.value = chip.dataset.q || "";
+      questionInput.focus();
+    });
+  });
+
+  // ===== Submit =====
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    setStatus("");
+    setFbStatus("");
+    answerEl.textContent = "—";
+    lastInteractionId = null;
+
+    if (!validateBeforeSend()) return;
+
+    setLoading(true);
+    setStatus("مِرآه تفكّر… ⏳", "info");
+
+    const fd = new FormData();
+    fd.append("image", imageInput.files[0]);
+    fd.append("question", questionInput.value.trim());
+
+    try {
+      const res = await fetch("/api/vqa", { method: "POST", body: fd });
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        setStatus(data.error || "حدث خطأ غير متوقع.", "error");
+        return;
+      }
+
+      setStatus("تم ✅", "ok");
+      answerEl.textContent = data.answer || "لا توجد إجابة.";
+      lastInteractionId = data.interaction_id || null;
+
+      // reset rating UI
+      selectedRating = 0;
+      stars.forEach(x => x.classList.remove("on"));
+      feedbackText.value = "";
+
+      await loadHistory();
+    } catch (err) {
+      setStatus("تعذر الاتصال بالخادم.", "error");
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  // ===== Copy Answer =====
+  copyBtn.addEventListener("click", async () => {
+    const text = answerEl.textContent.trim();
+    if (!text || text === "—") {
+      setStatus("لا توجد إجابة لنسخها.", "info");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus("تم نسخ الإجابة ✅", "ok");
+    } catch {
+      setStatus("تعذر النسخ (قد يكون المتصفح يمنع ذلك).", "error");
+    }
+  });
+
+  // ===== Stars rating =====
+  stars.forEach(s => {
+    s.addEventListener("click", () => {
+      selectedRating = parseInt(s.dataset.v);
+      stars.forEach(x => x.classList.toggle("on", parseInt(x.dataset.v) <= selectedRating));
+    });
+  });
+
+  // ===== Send feedback =====
+  sendFeedbackBtn.addEventListener("click", async () => {
+    if (!lastInteractionId) {
+      setFbStatus("اسأل سؤالًا أولًا ثم قيّمي الإجابة.", "info");
+      return;
+    }
+    if (selectedRating < 1 || selectedRating > 5) {
+      setFbStatus("اختاري تقييم من 1 إلى 5.", "error");
+      return;
+    }
+
+    setFbStatus("جاري إرسال التقييم...", "info");
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          interaction_id: lastInteractionId,
+          rating: selectedRating,
+          feedback_text: feedbackText.value.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setFbStatus(data.error || "حدث خطأ.", "error");
+        return;
+      }
+      setFbStatus("✅ تم إرسال التقييم", "ok");
+      await loadHistory();
+    } catch (e) {
+      setFbStatus("تعذر الاتصال بالخادم.", "error");
+    }
+  });
+
+  // init
+  loadHistory();
+</script>
+</body>
+</html>
