@@ -9,7 +9,7 @@
 
 <body>
   <div class="container">
-    <!-- ===== Header ===== -->
+
     <header class="topbar">
       <div class="brand">
         <div class="logo">مِ</div>
@@ -27,7 +27,7 @@
     </header>
 
     <main class="grid">
-      <!-- Upload Card -->
+
       <section class="card">
         <h2 class="card-title">1) ارفع صورة</h2>
 
@@ -51,11 +51,7 @@
         <div class="hint">
           نصيحة: أسئلة مثل <b>العدّ</b> و<b>الألوان</b> و<b>الأشياء</b> تعطي نتائج أفضل.
         </div>
-
-        <div id="jsOk" class="js-ok">✅ JavaScript يعمل</div>
       </section>
-
-      <!-- Ask Card -->
       <section class="card">
         <h2 class="card-title">2) اكتب سؤالك</h2>
 
@@ -97,7 +93,9 @@
         <!-- ===== Feedback ===== -->
         <div class="feedback">
           <h4>قيّمي الإجابة</h4>
-          <div class="stars" id="stars">
+
+       
+          <div class="stars" id="stars" aria-label="التقييم بالنجوم">
             <button type="button" class="star" data-v="1">★</button>
             <button type="button" class="star" data-v="2">★</button>
             <button type="button" class="star" data-v="3">★</button>
@@ -112,7 +110,6 @@
 
         <hr class="sep" />
 
-        <!-- ===== History ===== -->
         <div class="history">
           <div class="row">
             <h3>سجل الإجابات</h3>
@@ -122,14 +119,14 @@
         </div>
 
         <footer class="footer">
-          © 2026 مِرآه — منصة A-VQA باللغة العربية
+          مِرآه منصة A-VQA باللغة العربية
         </footer>
       </section>
     </main>
   </div>
 
 <script>
-  // ===== Elements =====
+
   const form = document.getElementById("vqaForm");
   const dropzone = document.getElementById("dropzone");
   const imageInput = document.getElementById("image");
@@ -147,6 +144,7 @@
   const refreshHistoryBtn = document.getElementById("refreshHistory");
   const historyList = document.getElementById("historyList");
 
+  const starsWrap = document.getElementById("stars");
   const stars = document.querySelectorAll(".star");
   const fbStatus = document.getElementById("fbStatus");
   const feedbackText = document.getElementById("feedbackText");
@@ -192,7 +190,12 @@
     return true;
   }
 
-  // ===== History =====
+  function escapeHtml(s) {
+    return (s || "").replace(/[&<>"']/g, (c) => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+    }[c]));
+  }
+
   async function loadHistory() {
     historyList.innerHTML = "";
     try {
@@ -224,12 +227,6 @@
     }
   }
 
-  function escapeHtml(s) {
-    return (s || "").replace(/[&<>"']/g, (c) => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
-    }[c]));
-  }
-
   refreshHistoryBtn.addEventListener("click", loadHistory);
 
   // ===== Pick Image =====
@@ -244,11 +241,11 @@
     const file = imageInput.files?.[0];
     if (file) {
       showPreview(file);
-      setStatus("تم اختيار الصورة ✅", "ok");
+      setStatus("تم اختيار الصورة", "ok");
     }
   });
 
-  // ===== Drag & Drop =====
+
   ["dragenter","dragover"].forEach(evt => {
     dropzone.addEventListener(evt, (e) => {
       e.preventDefault();
@@ -272,11 +269,11 @@
       dt.items.add(file);
       imageInput.files = dt.files;
       showPreview(file);
-      setStatus("تم رفع الصورة بالسحب ✅", "ok");
+      setStatus("تم رفع الصورة بالسحب ", "ok");
     }
   });
 
-  // ===== Chips =====
+
   document.querySelectorAll(".chip").forEach(chip => {
     chip.addEventListener("click", () => {
       questionInput.value = chip.dataset.q || "";
@@ -296,7 +293,7 @@
     if (!validateBeforeSend()) return;
 
     setLoading(true);
-    setStatus("مِرآه تفكّر… ⏳", "info");
+    setStatus("مِرآه تفكّر… ", "info");
 
     const fd = new FormData();
     fd.append("image", imageInput.files[0]);
@@ -311,13 +308,13 @@
         return;
       }
 
-      setStatus("تم ✅", "ok");
+      setStatus("تم ", "ok");
       answerEl.textContent = data.answer || "لا توجد إجابة.";
       lastInteractionId = data.interaction_id || null;
 
       // reset rating UI
       selectedRating = 0;
-      stars.forEach(x => x.classList.remove("on"));
+      paintStars(0);
       feedbackText.value = "";
 
       await loadHistory();
@@ -337,27 +334,89 @@
     }
     try {
       await navigator.clipboard.writeText(text);
-      setStatus("تم نسخ الإجابة ✅", "ok");
+      setStatus("تم نسخ الإجابة ", "ok");
     } catch {
       setStatus("تعذر النسخ (قد يكون المتصفح يمنع ذلك).", "error");
     }
   });
 
-  // ===== Stars rating =====
+
+  function ratingLabel(v) {
+    switch (v) {
+      case 1: return "⭐ سيّئة جدًا";
+      case 2: return "⭐⭐ تحتاج تحسين";
+      case 3: return "⭐⭐⭐ جيدة";
+      case 4: return "⭐⭐⭐⭐ ممتازة";
+      case 5: return "⭐⭐⭐⭐⭐ رائعة جدًا";
+      default: return "اختاري تقييمًا";
+    }
+  }
+
+  function paintStars(v) {
+    stars.forEach(x => x.classList.toggle("on", parseInt(x.dataset.v) <= v));
+    starsWrap.dataset.label = ratingLabel(v);
+  }
+
+
+  paintStars(0);
+
+
+  starsWrap.setAttribute("tabindex", "0");
+  starsWrap.setAttribute("role", "radiogroup");
+  stars.forEach((btn) => {
+    btn.setAttribute("role", "radio");
+    btn.setAttribute("aria-label", `تقييم ${btn.dataset.v} من 5`);
+  });
+
+
   stars.forEach(s => {
     s.addEventListener("click", () => {
       selectedRating = parseInt(s.dataset.v);
-      stars.forEach(x => x.classList.toggle("on", parseInt(x.dataset.v) <= selectedRating));
+
+      s.classList.remove("pop");
+      void s.offsetWidth; 
+      s.classList.add("pop");
+
+      paintStars(selectedRating);
+    });
+
+
+    s.addEventListener("mouseenter", () => {
+      const v = parseInt(s.dataset.v);
+      paintStars(v);
     });
   });
 
-  // ===== Send feedback =====
+  starsWrap.addEventListener("mouseleave", () => {
+    paintStars(selectedRating);
+  });
+  starsWrap.addEventListener("keydown", (e) => {
+    const key = e.key;
+    if (!["ArrowLeft", "ArrowRight", "Enter", " ", "Spacebar"].includes(key)) return;
+
+    e.preventDefault();
+
+    if (key === "ArrowRight") selectedRating = Math.min(5, (selectedRating || 0) + 1);
+    if (key === "ArrowLeft") selectedRating = Math.max(1, (selectedRating || 1) - 1);
+
+    paintStars(selectedRating);
+
+    const target = [...stars].find(btn => parseInt(btn.dataset.v) === selectedRating);
+    if (target) target.focus();
+  });
+
+
   sendFeedbackBtn.addEventListener("click", async () => {
     if (!lastInteractionId) {
       setFbStatus("اسأل سؤالًا أولًا ثم قيّمي الإجابة.", "info");
       return;
     }
     if (selectedRating < 1 || selectedRating > 5) {
+
+      starsWrap.classList.remove("shake");
+      void starsWrap.offsetWidth;
+      starsWrap.classList.add("shake");
+
       setFbStatus("اختاري تقييم من 1 إلى 5.", "error");
       return;
     }
@@ -378,7 +437,7 @@
         setFbStatus(data.error || "حدث خطأ.", "error");
         return;
       }
-      setFbStatus("✅ تم إرسال التقييم", "ok");
+      setFbStatus(" تم إرسال التقييم", "ok");
       await loadHistory();
     } catch (e) {
       setFbStatus("تعذر الاتصال بالخادم.", "error");
