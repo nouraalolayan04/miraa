@@ -5,7 +5,7 @@ import requests
 from PIL import Image
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from db import init_db, save_interaction, update_feedback, list_interactions
-
+import time
 from dotenv import load_dotenv
 
 # =====================
@@ -14,10 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def clean_model_id(raw: str, fallback: str) -> str:
-    """
-    Fix cases where env value is polluted like:
-    'HF_MODEL_ID=Qwen/Qwen2.5-VL-7B-Instruct'
-    """
+  
     if not raw:
         return fallback
     raw = raw.strip()
@@ -28,11 +25,11 @@ def clean_model_id(raw: str, fallback: str) -> str:
     return raw or fallback
 
 
-# ✅ Use HF_TOKEN (Router) not HF_API_KEY
+# Use HF_TOKEN (Router) not HF_API_KEY
 HF_TOKEN = (os.getenv("HF_TOKEN") or os.getenv("HF_API_KEY") or "").strip()
 
-# ✅ Allowed model from your router message
-DEFAULT_MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
+# Allowed model from your router message
+DEFAULT_MODEL ="Qwen/Qwen3-VL-8B-Instruct"
 HF_MODEL_ID = clean_model_id(os.getenv("HF_MODEL_ID", ""), DEFAULT_MODEL)
 
 print("HF_MODEL_ID =", repr(HF_MODEL_ID))
@@ -60,6 +57,7 @@ def call_hf_router_vlm(image_b64: str, question_ar: str) -> str:
     """
     Calls Hugging Face Router (OpenAI-compatible chat completions)
     with multimodal content: text + image_url.
+    Prints latency + tokens in CMD.
     """
     if not HF_TOKEN:
         return "خطأ: لم يتم ضبط HF_TOKEN (أو HF_API_KEY) في ملف .env"
@@ -71,55 +69,71 @@ def call_hf_router_vlm(image_b64: str, question_ar: str) -> str:
     }
 
     payload = {
-    "model": HF_MODEL_ID,
-    "messages": [
-        {
-            "role": "system",
-            "content": (
-                "أجب باللغة العربية فقط. "
-                "إذا كان السؤال عن عدد أشخاص أو أشياء في الصورة، فقم بالعد مباشرة إذا كان ذلك ممكنًا من الصورة. "
-                "لا تقل (لا أعلم) إلا إذا كانت الصورة غير واضحة تمامًا."
-            ),
-        },
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": f"السؤال: {question_ar}\ركز على السوال."
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{image_b64}"
-                    }
-                },
-            ],
-        },
-    ],
-    "max_tokens": 180,
-    "temperature": 0.2,
-}
+        "model": HF_MODEL_ID,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "أجب باللغة العربية فقط. "
+                    "إذا كان السؤال عن عدد أشخاص أو أشياء في الصورة، فقم بالعد مباشرة إذا كان ذلك ممكنًا من الصورة. "
+                ),
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"السؤال: {question_ar}"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+                    },
+                ],
+            },
+        ],
+        "max_tokens": 180,
+        "temperature": 0.2,
+    }
 
-
+    # ===== Latency timing =====
+    start_time = time.perf_counter()
     r = requests.post(url, headers=headers, json=payload, timeout=120)
+    end_time = time.perf_counter()
+    latency = round(end_time - start_time, 3)
 
-    # Helpful errors
+    # ===== Helpful errors =====
     if r.status_code == 401:
+        print(f"[{HF_MODEL_ID}] ❌ 401 Unauthorized | Latency: {latency}s")
         return "غير مصرح: تحقق من HF_TOKEN."
     if r.status_code == 400:
+        print(f"[{HF_MODEL_ID}] ❌ 400 Bad Request | Latency: {latency}s")
         return f"خطأ (400): {r.text}"
     if r.status_code == 404:
-        return "404: الموديل غير متاح عبر مزوّد حسابك. جرّبي موديل آخر من القائمة المسموحة."
+        print(f"[{HF_MODEL_ID}] ❌ 404 Not Found | Latency: {latency}s")
+        return "404: الموديل غير متاح عبر مزوّد حسابك. جرّبي موديل آخر."
     if not r.ok:
+        print(f"[{HF_MODEL_ID}] ❌ Error {r.status_code} | Latency: {latency}s")
         return f"خطأ ({r.status_code}): {r.text}"
 
     data = r.json()
-    try:
-        return data["choices"][0]["message"]["content"].strip()
-    except Exception:
-        return f"استجابة غير متوقعة: {data}"
 
+    try:
+        answer = data["choices"][0]["message"]["content"].strip()
+        usage = data.get("usage", {})
+        total_tokens = usage.get("total_tokens", "N/A")
+        prompt_tokens = usage.get("prompt_tokens", "N/A")
+        completion_tokens = usage.get("completion_tokens", "N/A")
+
+        print("======================================")
+        print(f"MODEL      : {HF_MODEL_ID}")
+        print(f"LATENCY    : {latency} seconds")
+        print(f"TOKENS     : total={total_tokens} | prompt={prompt_tokens} | completion={completion_tokens}")
+        print(f"ANSWER LEN : {len(answer)} chars")
+        print("======================================")
+
+        return answer
+
+    except Exception:
+        print(f"[{HF_MODEL_ID}] ⚠ Unexpected response | Latency: {latency}s")
+        return f"استجابة غير متوقعة: {data}"
 
 # =====================
 # Routes
@@ -153,10 +167,10 @@ def vqa():
 
 
     interaction_id = save_interaction(
-        question=question,
-        answer=answer,
-        model_id=HF_MODEL_ID,
-        image_name=image_file.filename
+    question=question,
+    answer=answer,
+    model_id="",  # removed
+    image_b64=image_b64  # store image
     )
 
     return jsonify({"ok": True, "answer": answer, "interaction_id": interaction_id})
