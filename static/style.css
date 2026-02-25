@@ -1,3 +1,4 @@
+
 :root{
   --bg1:#070b16;
   --bg2:#0b1230;
@@ -473,4 +474,17 @@ button{ font-family: inherit; }
 @media (max-width: 950px){
   .grid{ grid-template-columns: 1fr; }
   .topbar{ gap: 12px; flex-wrap: wrap; }
+}
+.hist-comment {
+  margin-top: 6px;
+  font-size: 0.9rem;
+  color: #cbc7c775;
+} 
+
+.hist-img{
+  width: 100%;
+  max-height: 300px; /* you can adjust */
+  object-fit: contain; /* THIS is the fix */
+  border-radius: 12px;
+  background: #000; /* optional for empty space */
 }
