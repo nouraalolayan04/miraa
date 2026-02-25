@@ -20,10 +20,7 @@
         </div>
       </div>
 
-      <div class="pill">
-        <span class="dot"></span>
-        <span id="modelName">Qwen2.5-VL</span>
-      </div>
+    
     </header>
 
     <main class="grid">
@@ -48,9 +45,7 @@
           <div id="previewEmpty" class="preview-empty">لا توجد معاينة بعد</div>
         </div>
 
-        <div class="hint">
-          نصيحة: أسئلة مثل <b>العدّ</b> و<b>الألوان</b> و<b>الأشياء</b> تعطي نتائج أفضل.
-        </div>
+
       </section>
       <section class="card">
         <h2 class="card-title">2) اكتب سؤالك</h2>
@@ -61,7 +56,7 @@
             type="text"
             name="question"
             id="question"
-            placeholder="مثال: كم عدد الأطفال في الصورة؟"
+            placeholder=""
             autocomplete="off"
             required
           />
@@ -92,7 +87,7 @@
 
         <!-- ===== Feedback ===== -->
         <div class="feedback">
-          <h4>قيّمي الإجابة</h4>
+          <h4>تقيم الإجابة</h4>
 
        
           <div class="stars" id="stars" aria-label="التقييم بالنجوم">
@@ -211,17 +206,29 @@
         return;
       }
 
-      data.items.forEach(it => {
-        const div = document.createElement("div");
-        div.className = "hist-item";
-        const rating = (it.rating === null || it.rating === undefined) ? "—" : it.rating;
-        div.innerHTML = `
-          <div class="hist-q"><b>س:</b> ${escapeHtml(it.question)}</div>
-          <div class="hist-a"><b>ج:</b> ${escapeHtml(it.answer)}</div>
-          <div class="hist-meta">الموديل: ${escapeHtml(it.model_id)} | التقييم: ${rating}</div>
-        `;
-        historyList.appendChild(div);
-      });
+  data.items.forEach(it => {
+    const div = document.createElement("div");
+    div.className = "hist-item";
+
+    const rating = (it.rating === null || it.rating === undefined) ? "—" : it.rating;
+
+    const comment = (!it.feedback_text || it.feedback_text.trim() === "")
+      ? "لا يوجد تعليق"
+      : escapeHtml(it.feedback_text);
+
+    const imageHtml = it.image
+  ? `<img src="data:image/jpeg;base64,${it.image}" class="hist-img"/>`
+  : "";
+
+div.innerHTML = `
+  ${imageHtml}
+  <div class="hist-q"><b>س:</b> ${escapeHtml(it.question)}</div>
+  <div class="hist-a"><b>ج:</b> ${escapeHtml(it.answer)}</div>
+  <div class="hist-meta">التقييم: ${rating}</div>
+  <div class="hist-comment"><b>التعليق:</b> ${comment}</div>
+`;
+    historyList.appendChild(div);
+  });
     } catch (e) {
       historyList.textContent = "تعذر تحميل السجل.";
     }
@@ -408,7 +415,7 @@
 
   sendFeedbackBtn.addEventListener("click", async () => {
     if (!lastInteractionId) {
-      setFbStatus("اسأل سؤالًا أولًا ثم قيّمي الإجابة.", "info");
+      setFbStatus("اسأل سؤالًا أولًا ثم قيّم الإجابة.", "info");
       return;
     }
     if (selectedRating < 1 || selectedRating > 5) {
