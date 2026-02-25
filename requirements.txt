@@ -2,4 +2,5 @@ flask
 python-dotenv
 requests
 pillow
-faiss-cpu
+faiss-cpu==1.7.4
+
