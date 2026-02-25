@@ -1,63 +1,77 @@
-import sqlite3
+import faiss
+import numpy as np
+import json
+import os
 from datetime import datetime
+from sentence_transformers import SentenceTransformer
 
-DB_PATH = "miraa.db"
+# ===== Config =====
+INDEX_FILE = "vector.index"
+DATA_FILE = "data.json"
 
-def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+model = SentenceTransformer("all-MiniLM-L6-v2")
 
+# ===== In-Memory Storage =====
+data_store = []
+id_map = {}
+
+# ===== Load / Init =====
 def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS interactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        created_at TEXT NOT NULL,
-        question TEXT NOT NULL,
-        answer TEXT NOT NULL,
-        model_id TEXT NOT NULL,
-        image_name TEXT,
-        rating INTEGER,          -- 1..5
-        feedback_text TEXT       -- optional
-    );
-    """)
-    conn.commit()
-    conn.close()
+    global index, data_store, id_map
 
-def save_interaction(question, answer, model_id, image_name=None):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO interactions(created_at, question, answer, model_id, image_name)
-        VALUES (?, ?, ?, ?, ?)
-    """, (datetime.utcnow().isoformat(), question, answer, model_id, image_name))
-    conn.commit()
-    new_id = cur.lastrowid
-    conn.close()
-    return new_id
+    dim = 384
+    if os.path.exists(INDEX_FILE):
+        index = faiss.read_index(INDEX_FILE)
+    else:
+        index = faiss.IndexFlatL2(dim)
 
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            data_store = json.load(f)
+        id_map = {i: i for i in range(len(data_store))}
+    else:
+        data_store = []
+        id_map = {}
+
+# ===== Save =====
+def save_all():
+    faiss.write_index(index, INDEX_FILE)
+    with open(DATA_FILE, "w") as f:
+        json.dump(data_store, f)
+
+# ===== Embedding =====
+def embed(text):
+    return model.encode([text])[0].astype("float32")
+
+# ===== Save Interaction =====
+def save_interaction(question, answer, model_id, image_b64=None):
+    vec = embed(question + " " + answer)
+
+    idx = len(data_store)
+
+    data_store.append({
+        "id": idx,
+        "created_at": datetime.utcnow().isoformat(),
+        "question": question,
+        "answer": answer,
+        "image": image_b64,
+        "rating": None,
+        "feedback_text": None
+    })
+
+    index.add(np.array([vec]))
+    id_map[index.ntotal - 1] = idx
+
+    save_all()
+    return idx
+
+# ===== Feedback =====
 def update_feedback(interaction_id, rating, feedback_text=None):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        UPDATE interactions
-        SET rating = ?, feedback_text = ?
-        WHERE id = ?
-    """, (rating, feedback_text, interaction_id))
-    conn.commit()
-    conn.close()
+    if 0 <= interaction_id < len(data_store):
+        data_store[interaction_id]["rating"] = rating
+        data_store[interaction_id]["feedback_text"] = feedback_text
+        save_all()
 
+# ===== List =====
 def list_interactions(limit=20):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id, created_at, question, answer, model_id, image_name, rating, feedback_text
-        FROM interactions
-        ORDER BY id DESC
-        LIMIT ?
-    """, (limit,))
-    rows = cur.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    return list(reversed(data_store))[:limit]
